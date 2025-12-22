@@ -249,7 +249,7 @@
 			Controls.Add(cbCourt);
 			Controls.Add(cbId);
 			Name = "Form1";
-			Text = "예약";
+			Text = "예약 (v.1.0)";
 			ResumeLayout(false);
 			PerformLayout();
 		}
