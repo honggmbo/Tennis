@@ -1,21 +1,42 @@
 ﻿using Google.Cloud.Vision.V1;
-using Google.Protobuf.Reflection;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using WebDriverManager;
 using WebDriverManager.DriverConfigs.Impl;
+using WebDriverManager.Helpers;
 using Keys = OpenQA.Selenium.Keys;
 
 namespace Tennis
 {
-	class ReservationThread
+	public class Account
+	{
+		public string ID = "";
+		public string PW = "";
+		public string SPW = "";
+	}
+
+	public class ReservationData
+	{
+		public Account Acc;
+		public string Court = "";
+		public string CourtNumber = "";
+		public int Year;
+		public int Month;
+		public int Day;
+		public int StartTime;
+		public int EndTime;
+		public bool IsDelay;
+	}
+
+	public class ReservationThread
 	{
 		public ReservationData data;
 		private IWebDriver driver;
 		private SeleniumHelper selenium;
 		private System.Threading.Timer timer;
+		private string _curUrl;
 
 		public ReservationThread(ReservationData _data)
 		{
@@ -28,7 +49,7 @@ namespace Tennis
 			{
 				Init();
 			}
-			catch
+			catch (Exception e)
 			{
 				return;
 			}
@@ -36,21 +57,18 @@ namespace Tennis
 
 		public void Init()
 		{
-			// ChromeDriver 자동 다운로드 및 설정
-			new DriverManager().SetUpDriver(new ChromeConfig());
-
 			// Option
 			var options = new ChromeOptions();
 			var agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 			options.AddArgument($"--user-agent={agent}");
 			options.AddArgument("--disable-blink-features=AutomationControlled");
+			options.AddArgument("disable-gpu");
 
+			new DriverManager().SetUpDriver(new ChromeConfig(), VersionResolveStrategy.MatchingBrowser);
 			var service = ChromeDriverService.CreateDefaultService();
-
-			// 이 두 줄만 추가하면 끝!
 			service.HideCommandPromptWindow = true;
 
-			// ChromeDriver 인스턴스 생성
+			// ChromeDriver 자동 다운로드 및 설정
 			driver = new ChromeDriver(service, options);
 			selenium = new SeleniumHelper(driver);
 
@@ -117,6 +135,7 @@ namespace Tennis
 			url = url.Substring(0, url.IndexOf("startDate="));
 			var urlAdd = $"endDateTime={data.Year}-{data.Month:D2}-{data.Day:D2}T{data.EndTime:D2}%3A00%3A00%2B09%3A00&startDate={data.Year:D2}-{data.Month:D2}-{data.Day:D2}&startDateTime={data.Year}-{data.Month:D2}-{data.Day:D2}T{data.StartTime:D2}%3A00%3A00%2B09%3A00";
 			url += urlAdd;
+			_curUrl = url;
 			driver.Navigate().GoToUrl(url);
 		}
 
@@ -148,6 +167,7 @@ namespace Tennis
 			url = url.Substring(0, url.IndexOf("startDate="));
 			var urlAdd = $"endDateTime={data.Year}-{data.Month:D2}-{data.Day:D2}T{data.EndTime:D2}%3A00%3A00%2B09%3A00&startDate={data.Year:D2}-{data.Month:D2}-{data.Day:D2}&startDateTime={data.Year}-{data.Month:D2}-{data.Day:D2}T{data.StartTime:D2}%3A00%3A00%2B09%3A00";
 			url += urlAdd;
+			_curUrl = url;
 			driver.Navigate().GoToUrl(url);
 		}
 
@@ -174,15 +194,31 @@ namespace Tennis
 					if (btn.Text == "다음")
 					{
 						Console.WriteLine("OK");
+						btn.Click();
 						return true;
 					}
 				}
 			}
 			catch
 			{
-				Thread.Sleep(500);
+				Thread.Sleep(200);
 			}
 			return false;
+		}
+
+		private bool HasEnableButton(bool isDelay)
+		{
+			if (isDelay == true) return false;
+
+			try
+			{
+				var btn = driver.FindElement(By.ClassName("NextButton__disabled__a3P-t"));
+				return true;
+			}
+			catch
+			{
+				return false;
+			}
 		}
 
 		private void Refresh()
@@ -197,37 +233,66 @@ namespace Tennis
 			}
 		}
 
+		private void Refresh(string url)
+		{
+			try
+			{
+				driver.Navigate().GoToUrl(url);
+			}
+			catch
+			{
+				Thread.Sleep(500);
+			}
+		}
+
+		public void DoDelay()
+		{
+			while(true)
+			{
+				TimeZoneInfo kstZone = TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time");
+				DateTime date = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
+				var remain = (60 - date.Minute - 1) * 60 + (60 - date.Second) - 2;
+				Console.WriteLine($"남은 시간 : {remain}초");
+				WindowScrollBottom();
+
+				var refreshTime = 60;
+				if (remain > refreshTime + 5)
+				{
+					Thread.Sleep(refreshTime * 1000);
+					Refresh();
+				}
+				else
+				{
+					Thread.Sleep(remain * 1000);
+					return;
+				}
+			}
+		}
+
 		public void ProcessReservation()
 		{
 			// Step1 현재 시간 체크
-			// 현재 UTC 시간을 KST로 변환
-			TimeZoneInfo kstZone = TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time");
-			DateTime date = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-			var remain = (60 - date.Minute - 1) * 60 + (60 - date.Second) - 2;
-			Console.WriteLine($"남은 시간 : {remain}초");
-
 			WindowScrollBottom();
 
 			// Step2 대기
 			if (data.IsDelay)
 			{
-				if (remain > 0)
-				{
-					Thread.Sleep(remain * 1000);
-				}
+				DoDelay();
 			}
 
 			while (true)
 			{
-				if (CheckDate())
+				if (!HasEnableButton(data.IsDelay) && CheckDate())
+				{
 					break;
+				}
 
-				Refresh();
-				Thread.Sleep(500);
+				Refresh(_curUrl);
+				Thread.Sleep(300);
 			}
 
 			// Step3 다음
-			selenium.Click("//*[@id=\"root\"]/main/div[2]/div/button");
+			//selenium.Click("//*[@id=\"root\"]/main/div[2]/div/button");
 			Thread.Sleep(500);
 
 			// Step4 1차 결제 다음
@@ -244,8 +309,6 @@ namespace Tennis
 				}
 			}
 
-			var ss = driver.Url;
-
 			// Step5 결제하기
 			WindowScrollBottom();
 			selenium.Click("//*[@id=\"root\"]/div/div[2]/div[5]/div/div/div[2]/button");
@@ -261,23 +324,29 @@ namespace Tennis
 
 			Thread.Sleep(3000);
 
-			var style = selenium.GetElem("//*[@id=\"keyboard\"]/table/tbody/tr[1]/td[1]/button/span").GetAttribute("style");
-			var base64Urls = Base64ImageExtractor.ExtractBase64Images(style);
-			var imageUrl = "";
-			foreach (var v in base64Urls)
+			while(true)
 			{
-				imageUrl = v;
-				break;
-			}
+				var style = selenium.GetElem("//*[@id=\"keyboard\"]/table/tbody/tr[1]/td[1]/button/span").GetAttribute("style");
+				var base64Urls = Base64ImageExtractor.ExtractBase64Images(style);
+				var imageUrl = "";
+				foreach (var v in base64Urls)
+				{
+					imageUrl = v;
+					break;
+				}
 
-			// Step6 2차 비번
-			ProcessSPW(imageUrl);
+				// Step6 2차 비번
+				if (ProcessSPW(imageUrl))
+					break;
+				else
+					Refresh();
+			}
 		}
 
-		public void ProcessSPW(string base64Image)
+		public bool ProcessSPW(string base64Image)
 		{
 			var match = Regex.Match(base64Image, @"data:(image|application)/[a-zA-Z0-9.+_-]+;base64,(.*)");
-			if (!match.Success) return;
+			if (!match.Success) return false;
 
 			string base64Data = match.Groups[2].Value;
 			byte[] imageBytes = Convert.FromBase64String(base64Data);
@@ -293,32 +362,43 @@ namespace Tennis
 			var result = client.DetectText(image);
 			var number = result.First().Description;
 			var numbers = number.Split('\n');
-			var btId = new Dictionary<char, string>();
-			var x = 1;
-			var y = 1;
-			foreach (var str in numbers)
+			if (numbers.Length == 4
+				&& numbers[0].Length == 3
+				&& numbers[1].Length == 3
+				&& numbers[2].Length == 3
+				&& numbers[3].Length == 1)
 			{
-				foreach (var c in str)
+				var btId = new Dictionary<char, string>();
+				var x = 1;
+				var y = 1;
+				foreach (var str in numbers)
 				{
-					btId[c] = $"//*[@id=\"keyboard\"]/table/tbody/tr[{y}]/td[{x}]/button/span";
-					x++;
+					foreach (var c in str)
+					{
+						btId[c] = $"//*[@id=\"keyboard\"]/table/tbody/tr[{y}]/td[{x}]/button/span";
+						x++;
+					}
+
+					y++;
+					x = 1;
+					if (y == 4)
+						x = 2;
 				}
 
-				y++;
-				x = 1;
-				if (y == 4)
-					x = 2;
+				Debug.WriteLine(number);
+				var password = "121314";
+				foreach (var v in password)
+				{
+					selenium.Click(btId[v]);
+					Thread.Sleep(500);
+				}
 			}
-
-			Debug.WriteLine(number);
-			var password = "121314";
-			foreach (var v in password)
+			else
 			{
-				selenium.Click(btId[v]);
-				Thread.Sleep(500);
+				return false;
 			}
 
-
+			return true;
 		}
 
 		public void StartTimer(int seconds = 30)

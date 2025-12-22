@@ -28,7 +28,7 @@
 		/// </summary>
 		private void InitializeComponent()
 		{
-			this.cbId = new ComboBox();
+			cbId = new ComboBox();
 			cbCourt = new ComboBox();
 			cbCourtNumber = new ComboBox();
 			cbYear = new ComboBox();
@@ -51,11 +51,11 @@
 			// 
 			// cbId
 			// 
-			this.cbId.FormattingEnabled = true;
-			this.cbId.Location = new Point(94, 17);
-			this.cbId.Name = "cbId";
-			this.cbId.Size = new Size(121, 23);
-			this.cbId.TabIndex = 8;
+			cbId.FormattingEnabled = true;
+			cbId.Location = new Point(94, 17);
+			cbId.Name = "cbId";
+			cbId.Size = new Size(121, 23);
+			cbId.TabIndex = 8;
 			// 
 			// cbCourt
 			// 
@@ -247,7 +247,7 @@
 			Controls.Add(cbYear);
 			Controls.Add(cbCourtNumber);
 			Controls.Add(cbCourt);
-			Controls.Add(this.cbId);
+			Controls.Add(cbId);
 			Name = "Form1";
 			Text = "예약";
 			ResumeLayout(false);

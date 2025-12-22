@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+	<Compile Update="Form1.cs">
+		<SubType>Form</SubType>
+	</Compile>
     <PackageReference Include="Google.Cloud.Vision.V1" Version="3.8.0" />
     <PackageReference Include="Selenium.WebDriver" Version="4.38.0" />
     <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="142.0.7444.16200" />

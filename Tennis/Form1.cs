@@ -3,26 +3,6 @@ using Newtonsoft.Json.Linq;
 
 namespace Tennis
 {
-	public class Account
-	{
-		public string ID = "";
-		public string PW = "";
-		public string SPW = "";
-	}
-
-	public class ReservationData
-	{
-		public Account Acc;
-		public string Court = "";
-		public string CourtNumber = "";
-		public int Year;
-		public int Month;
-		public int Day;
-		public int StartTime;
-		public int EndTime;
-		public bool IsDelay;
-	}
-
 	public partial class Form1 : Form
 	{
 		private Dictionary<string, Account> account = new();
@@ -107,15 +87,15 @@ namespace Tennis
 		private ReservationData GetData()
 		{
 			var data = new ReservationData();
-			string acc = cbId.Items[cbId.SelectedIndex].ToString();
+			string acc = cbId.SelectedItem.ToString();
 			data.Acc = account[acc];
-			data.Court = cbCourt.Items[cbCourt.SelectedIndex].ToString();
-			data.CourtNumber = cbCourtNumber.Items[cbCourtNumber.SelectedIndex].ToString();
-			data.Year = int.Parse(cbYear.Items[cbYear.SelectedIndex].ToString());
-			data.Month = int.Parse(cbMonth.Items[cbMonth.SelectedIndex].ToString());
-			data.Day = int.Parse(cbDay.Items[cbDay.SelectedIndex].ToString());
-			data.StartTime = int.Parse(cbStartTime.Items[cbStartTime.SelectedIndex].ToString());
-			data.EndTime = int.Parse(cbEndTime.Items[cbEndTime.SelectedIndex].ToString());
+			data.Court = cbCourt.SelectedItem.ToString();
+			data.CourtNumber = cbCourtNumber.SelectedItem.ToString();
+			data.Year = int.Parse(cbYear.SelectedItem.ToString());
+			data.Month = int.Parse(cbMonth.SelectedItem.ToString());
+			data.Day = int.Parse(cbDay.SelectedItem.ToString());
+			data.StartTime = int.Parse(cbStartTime.SelectedItem.ToString());
+			data.EndTime = int.Parse(cbEndTime.SelectedItem.ToString());
 			data.IsDelay = reservationDelay.Checked;
 
 			return data;
