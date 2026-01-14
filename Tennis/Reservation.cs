@@ -84,9 +84,12 @@ namespace Tennis
 		public void Login()
 		{
 			// 웹사이트 열기
-			driver.Navigate().GoToUrl("https://nid.naver.com/nidlogin.login");
+			driver.Navigate().GoToUrl("https://nid.naver.com/nidlogin.login?mode=form&url=https%3A%2F%2Fwww.naver.com&locale=ko_KR&svctype=1#none");
 			var wait = new OpenQA.Selenium.Support.UI.WebDriverWait(driver, TimeSpan.FromSeconds(3));
 			var timeElement = wait.Until(d => d.FindElement(By.XPath("//*[@id=\"id\"]")));
+
+			// Id Tab Click
+			selenium.Click("//*[@id=\"loinid\"]/span/span");
 
 			// login
 			var id = selenium.GetElem("//*[@id=\"id\"]");

@@ -18,4 +18,8 @@
     <PackageReference Include="WebDriverManager" Version="2.17.6" />
   </ItemGroup>
 
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="copy &quot;$(TargetDir)Tennis.exe&quot; &quot;$(SolutionDir)Reservation&quot;&#xD;&#xA;copy &quot;$(TargetDir)Tennis.dll&quot; &quot;$(SolutionDir)Reservation&quot;" />
+  </Target>
+
 </Project>
