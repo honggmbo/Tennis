@@ -47,6 +47,8 @@
 			label3 = new Label();
 			label2 = new Label();
 			label1 = new Label();
+			weekend = new Button();
+			cbWeek = new ComboBox();
 			SuspendLayout();
 			// 
 			// cbId
@@ -115,9 +117,9 @@
 			// 
 			// button1
 			// 
-			button1.Location = new Point(241, 48);
+			button1.Location = new Point(241, 17);
 			button1.Name = "button1";
-			button1.Size = new Size(98, 56);
+			button1.Size = new Size(98, 35);
 			button1.TabIndex = 16;
 			button1.Text = "Start";
 			button1.UseVisualStyleBackColor = true;
@@ -125,9 +127,9 @@
 			// 
 			// button2
 			// 
-			button2.Location = new Point(241, 112);
+			button2.Location = new Point(241, 58);
 			button2.Name = "button2";
-			button2.Size = new Size(98, 56);
+			button2.Size = new Size(98, 37);
 			button2.TabIndex = 17;
 			button2.Text = "Stop";
 			button2.UseVisualStyleBackColor = true;
@@ -136,7 +138,7 @@
 			// reservationDelay
 			// 
 			reservationDelay.AutoSize = true;
-			reservationDelay.Location = new Point(241, 185);
+			reservationDelay.Location = new Point(241, 103);
 			reservationDelay.Name = "reservationDelay";
 			reservationDelay.Size = new Size(78, 19);
 			reservationDelay.TabIndex = 18;
@@ -224,11 +226,31 @@
 			label1.Text = "아이디";
 			label1.TextAlign = ContentAlignment.MiddleRight;
 			// 
+			// weekend
+			// 
+			weekend.Location = new Point(241, 133);
+			weekend.Name = "weekend";
+			weekend.Size = new Size(98, 35);
+			weekend.TabIndex = 27;
+			weekend.Text = "주말예약";
+			weekend.UseVisualStyleBackColor = true;
+			weekend.Click += weekend_Click;
+			// 
+			// cbWeek
+			// 
+			cbWeek.FormattingEnabled = true;
+			cbWeek.Location = new Point(241, 174);
+			cbWeek.Name = "cbWeek";
+			cbWeek.Size = new Size(121, 23);
+			cbWeek.TabIndex = 28;
+			// 
 			// Form1
 			// 
 			AutoScaleDimensions = new SizeF(7F, 15F);
 			AutoScaleMode = AutoScaleMode.Font;
 			ClientSize = new Size(370, 247);
+			Controls.Add(cbWeek);
+			Controls.Add(weekend);
 			Controls.Add(label8);
 			Controls.Add(label7);
 			Controls.Add(label6);
@@ -249,7 +271,7 @@
 			Controls.Add(cbCourt);
 			Controls.Add(cbId);
 			Name = "Form1";
-			Text = "예약 (v.1.0.1)";
+			Text = "예약 (v.1.0.2)";
 			ResumeLayout(false);
 			PerformLayout();
 		}
@@ -274,5 +296,7 @@
 		private Label label3;
 		private Label label2;
 		private Label label1;
+		private Button weekend;
+		private ComboBox cbWeek;
 	}
 }

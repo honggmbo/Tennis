@@ -55,9 +55,10 @@ namespace Tennis
 			cbCourtNumber.Items.Add('C');
 			cbCourt.SelectedIndex = 0;
 
+			var year = DateTime.Now.Year;
 			// Year
 			for (var i = 0; i < 2; i++)
-				cbYear.Items.Add($"{i + 2025}");
+				cbYear.Items.Add($"{i + year}");
 
 			// Month
 			for (var i = 0; i < 12; i++)
@@ -74,9 +75,18 @@ namespace Tennis
 				cbEndTime.Items.Add($"{i + 1}");
 			}
 
+			cbWeek.Items.Add("일요일");
+			cbWeek.Items.Add("월요일");
+			cbWeek.Items.Add("화요일");
+			cbWeek.Items.Add("수요일");
+			cbWeek.Items.Add("목요일");
+			cbWeek.Items.Add("금요일");
+			cbWeek.Items.Add("토요일");
+
+			cbWeek.SelectedIndex = 6;
 			cbYear.SelectedIndex = 0;
 			cbCourtNumber.SelectedIndex = 2;
-			cbMonth.SelectedIndex = DateTime.Now.Month >= 12 ? 0 : DateTime.Now.Month ;
+			cbMonth.SelectedIndex = DateTime.Now.Month >= 12 ? 0 : DateTime.Now.Month;
 			cbDay.SelectedIndex = 0;
 			cbStartTime.SelectedIndex = 10 - 1;
 			cbEndTime.SelectedIndex = 13 - 1;
@@ -106,7 +116,6 @@ namespace Tennis
 			Thread trd = new(StartReservation);
 			trd.IsBackground = true;
 			var data = GetData();
-			Clipboard.SetText(data.Acc.ID);
 			trd.SetApartmentState(ApartmentState.STA);
 			ReservationThread tp = new ReservationThread(data);
 			trd.Start(tp);
@@ -130,6 +139,52 @@ namespace Tennis
 		protected override void OnFormClosing(FormClosingEventArgs e)
 		{
 			OnClickStop(null, null);
+		}
+
+		private void weekend_Click(object sender, EventArgs e)
+		{
+			int year = int.Parse(cbYear.SelectedItem.ToString());
+			int month = int.Parse(cbMonth.SelectedItem.ToString());
+			DayOfWeek week = (DayOfWeek)cbWeek.SelectedIndex;
+			FindDayOfWeekList(year, month, week, out var list);
+
+			int i = 0;
+			foreach (var v in list)
+			{
+				Thread trd = new(StartReservation);
+				trd.IsBackground = true;
+				var data = GetData();
+				data.Day = v.Day;
+				data.StartDelay = 5000 * i;
+				trd.SetApartmentState(ApartmentState.STA);
+				ReservationThread tp = new ReservationThread(data);
+				trd.Start(tp);
+				threads.Add(tp);
+				i++;
+			}
+		}
+
+		private void FindDayOfWeekList(int year, int month, DayOfWeek dayOfWeek, out List<DateTime> outData)
+		{
+			// 현재 연도와 월 가져오기
+			DateTime today = DateTime.Today;
+			
+
+			// 해당 월의 첫 날과 마지막 날 계산
+			DateTime firstDay = new DateTime(year, month, 1);
+			DateTime lastDay = firstDay.AddMonths(1).AddDays(-1);
+
+			// 토요일 리스트 저장
+			outData = new List<DateTime>();
+
+			// 첫 날부터 마지막 날까지 루프
+			for (DateTime date = firstDay; date <= lastDay; date = date.AddDays(1))
+			{
+				if (date.DayOfWeek == dayOfWeek)
+				{
+					outData.Add(date);
+				}
+			}
 		}
 	}
 }

@@ -1,12 +1,14 @@
 ﻿using Google.Cloud.Vision.V1;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Support.UI;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using WebDriverManager;
 using WebDriverManager.DriverConfigs.Impl;
 using WebDriverManager.Helpers;
 using Keys = OpenQA.Selenium.Keys;
+using ExpectedConditions = SeleniumExtras.WaitHelpers.ExpectedConditions;
 
 namespace Tennis
 {
@@ -28,6 +30,7 @@ namespace Tennis
 		public int StartTime;
 		public int EndTime;
 		public bool IsDelay;
+		public int StartDelay = 0;
 	}
 
 	public class ReservationThread
@@ -47,6 +50,7 @@ namespace Tennis
 		{
 			try
 			{
+				Thread.Sleep(data.StartDelay);
 				Init();
 			}
 			catch (Exception e)
@@ -85,13 +89,12 @@ namespace Tennis
 		{
 			// 웹사이트 열기
 			driver.Navigate().GoToUrl("https://nid.naver.com/nidlogin.login?mode=form&url=https%3A%2F%2Fwww.naver.com&locale=ko_KR&svctype=1#none");
-			var wait = new OpenQA.Selenium.Support.UI.WebDriverWait(driver, TimeSpan.FromSeconds(3));
-			var timeElement = wait.Until(d => d.FindElement(By.XPath("//*[@id=\"id\"]")));
-
+			Wait();
 			// Id Tab Click
 			selenium.Click("//*[@id=\"loinid\"]/span/span");
 
 			// login
+			Clipboard.SetText(data.Acc.ID);
 			var id = selenium.GetElem("//*[@id=\"id\"]");
 			id.Click();
 			id.SendKeys(Keys.Control + "v" );
@@ -197,14 +200,15 @@ namespace Tennis
 					if (btn.Text == "다음")
 					{
 						Console.WriteLine("OK");
-						btn.Click();
+						if (btn.Displayed && btn.Enabled)
+							btn.Click();
 						return true;
 					}
 				}
 			}
 			catch
 			{
-				Thread.Sleep(200);
+				Wait();
 			}
 			return false;
 		}
@@ -244,7 +248,7 @@ namespace Tennis
 			}
 			catch
 			{
-				Thread.Sleep(500);
+				Wait();
 			}
 		}
 
@@ -291,32 +295,40 @@ namespace Tennis
 				}
 
 				Refresh(_curUrl);
-				Thread.Sleep(300);
 			}
 
 			// Step3 다음
 			//selenium.Click("//*[@id=\"root\"]/main/div[2]/div/button");
-			Thread.Sleep(500);
+			// CheckDate안에서 호출
+			Wait();
 
 			// Step4 1차 결제 다음
 			var main_window = driver.CurrentWindowHandle;
 			WindowScrollBottom();
 			selenium.Click("//*[@id=\"root\"]/div[2]/div[5]/div/button[2]");
+			Wait();
+
 			Thread.Sleep(5000);
 
 			foreach (var v in driver.WindowHandles)
 			{
 				if (v != main_window)
 				{
-					driver.SwitchTo().Window(v); // 팝업 창으로 전환
+					var changeDrive = driver.SwitchTo().Window(v);
+					selenium.ChangeDriver(changeDrive);
+					break;
 				}
 			}
 
+			Wait();
+
 			// Step5 결제하기
 			WindowScrollBottom();
-			selenium.Click("//*[@id=\"root\"]/div/div[2]/div[5]/div/div/div[2]/button");
-			Thread.Sleep(3000);
-
+			var payment = "//*[@id=\"root\"]/div/div[2]/div[5]/div/div/div[2]/button";
+			selenium.Click(payment);
+			Wait();
+			
+			/* TODO 2차 비번 나중에
 			foreach (var v in driver.WindowHandles)
 			{
 				if (v != main_window && driver.CurrentWindowHandle != v)
@@ -324,10 +336,10 @@ namespace Tennis
 					driver.SwitchTo().Window(v); // 팝업 창으로 전환
 				}
 			}
+			Wait();
+			selenium.ChangeDriver(driver);
 
-			Thread.Sleep(3000);
-
-			while(true)
+			while (true)
 			{
 				var style = selenium.GetElem("//*[@id=\"keyboard\"]/table/tbody/tr[1]/td[1]/button/span").GetAttribute("style");
 				var base64Urls = Base64ImageExtractor.ExtractBase64Images(style);
@@ -344,6 +356,19 @@ namespace Tennis
 				else
 					Refresh();
 			}
+			*/
+		}
+
+		public void Wait()
+		{
+			var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10))  // 타임아웃 넉넉히
+			{
+				PollingInterval = TimeSpan.FromMilliseconds(200),  // 0.2초마다 체크 (기본 0.2초지만 명시)
+				Message = "타임아웃: 결제 관련 요소 로드 실패"
+			};
+
+			wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").ToString() == "complete");
+			Console.WriteLine("페이지 로딩 완료!");
 		}
 
 		public bool ProcessSPW(string base64Image)

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Tennis": {
+      "commandName": "Project",
+      "workingDirectory": "C:\\TestProject\\Tennis\\Reservation"
+    }
+  }
+}

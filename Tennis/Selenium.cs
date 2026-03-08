@@ -1,4 +1,6 @@
 ﻿using OpenQA.Selenium;
+using OpenQA.Selenium.Support.UI;
+using SeleniumExtras.WaitHelpers;
 
 namespace Tennis
 {
@@ -11,17 +13,23 @@ namespace Tennis
 			this.driver = driver;
 		}
 
+		public void ChangeDriver(IWebDriver driver)
+		{
+			this.driver = driver;
+		}
+
 		public void Click(string xpath)
 		{
 			try
 			{
+				var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(1));
+				wait.Until(ExpectedConditions.ElementToBeClickable(By.XPath(xpath)));
 				var button = driver.FindElement(By.XPath(xpath));
 				button.Click();
 			}
 			catch
 			{
 				Console.WriteLine($"실패: {xpath}");
-				Thread.Sleep(500);
 				Click(xpath);
 			}
 		}
