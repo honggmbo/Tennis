@@ -64,9 +64,14 @@ namespace Tennis
 			// Option
 			var options = new ChromeOptions();
 			var agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+			//string userProfile = @"C:\Users\honggmbo\AppData\Local\Google\Chrome\User Data";
+			//options.AddArgument($"--user-data-dir={userProfile}");
+			//options.AddArgument("--profile-directory=Default");   // 또는 "Profile 1" 등
 			options.AddArgument($"--user-agent={agent}");
 			options.AddArgument("--disable-blink-features=AutomationControlled");
 			options.AddArgument("disable-gpu");
+			options.AddArgument("--start-maximized");
+			options.AddExcludedArgument("enable-automation");
 
 			new DriverManager().SetUpDriver(new ChromeConfig(), VersionResolveStrategy.MatchingBrowser);
 			var service = ChromeDriverService.CreateDefaultService();
@@ -88,7 +93,7 @@ namespace Tennis
 		public void Login()
 		{
 			// 웹사이트 열기
-			driver.Navigate().GoToUrl("https://nid.naver.com/nidlogin.login?mode=form&url=https%3A%2F%2Fwww.naver.com&locale=ko_KR&svctype=1#none");
+			driver.Navigate().GoToUrl("https://nid.naver.com/nidlogin.login");
 			Wait();
 			// Id Tab Click
 			selenium.Click("//*[@id=\"loinid\"]/span/span");
@@ -99,10 +104,14 @@ namespace Tennis
 			id.Click();
 			id.SendKeys(Keys.Control + "v" );
 			var pw = selenium.GetElem("//*[@id=\"pw\"]");
+			Thread.Sleep(1000);
 			Clipboard.SetText(data.Acc.PW);
 			pw.Click();
 			pw.SendKeys(Keys.Control + "v");
-			selenium.Click("//*[@id=\"log.login\"]");
+			Thread.Sleep(1000);
+
+			var enter = selenium.GetElem("//*[@id=\"log.login\"]");
+			enter.SendKeys(Keys.Enter);
 		}
 
 		public void FindCourt()
@@ -154,6 +163,7 @@ namespace Tennis
 			var elem = selenium.GetElem("//*[@id=\"root\"]/div[3]/div[2]/div[1]/ul");
 			var elems = elem.FindElements(By.ClassName("HomeBookingList__item__ALjH7"));
 
+			var idx = 1;
 			foreach (var v in elems)
 			{
 				var courtName = v.Text;
@@ -162,9 +172,11 @@ namespace Tennis
 					if (data.Month == 1 && courtName.Contains("11월"))
 						continue;
 
-					v.Click();
+					var el = selenium.GetElem($"//*[@id=\"root\"]/div[3]/div[2]/div/ul/li[{idx}]/a/div/div[1]");
+					el.Click();
 					break;
 				}
+				idx++;
 			}
 
 			Thread.Sleep(2000);
@@ -258,12 +270,12 @@ namespace Tennis
 			{
 				TimeZoneInfo kstZone = TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time");
 				DateTime date = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-				var remain = (60 - date.Minute - 1) * 60 + (60 - date.Second) - 2;
+				var remain = (60 - date.Minute - 1) * 60 + (60 - date.Second);
 				Console.WriteLine($"남은 시간 : {remain}초");
 				WindowScrollBottom();
 
 				var refreshTime = 60;
-				if (remain > refreshTime + 5)
+				if (remain > refreshTime + 7)
 				{
 					Thread.Sleep(refreshTime * 1000);
 					Refresh();

@@ -116,6 +116,7 @@ namespace Tennis
 			Thread trd = new(StartReservation);
 			trd.IsBackground = true;
 			var data = GetData();
+
 			trd.SetApartmentState(ApartmentState.STA);
 			ReservationThread tp = new ReservationThread(data);
 			trd.Start(tp);
