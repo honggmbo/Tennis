@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using WebDriverManager;
 using WebDriverManager.DriverConfigs.Impl;
 using WebDriverManager.Helpers;
+using OpenQA.Selenium.Interactions;
 using Keys = OpenQA.Selenium.Keys;
 using ExpectedConditions = SeleniumExtras.WaitHelpers.ExpectedConditions;
 
@@ -17,6 +18,7 @@ namespace Tennis
 		public string ID = "";
 		public string PW = "";
 		public string SPW = "";
+		public string Profile = "Default";  // Chrome 프로필 폴더명 (chrome://version 에서 확인)
 	}
 
 	public class ReservationData
@@ -59,27 +61,134 @@ namespace Tennis
 			}
 		}
 
+		// 실제 Chrome 프로필을 임시 폴더에 복사 → Chrome 실행 중에도 사용 가능, 계정별 독립 실행 가능
+		private string SetupTempProfile()
+		{
+			var srcUserData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+										   "Google", "Chrome", "User Data");
+			var srcProfile = Path.Combine(srcUserData, data.Acc.Profile);
+			var tempBase = Path.Combine(Path.GetTempPath(), "TennisChromeProfiles", data.Acc.ID);
+			var tempProfile = Path.Combine(tempBase, data.Acc.Profile);
+
+			if (Directory.Exists(tempBase))
+				Directory.Delete(tempBase, true);
+			Directory.CreateDirectory(tempProfile);
+
+			if (Directory.Exists(srcProfile))
+			{
+				// 로그인 세션 유지에 필요한 파일/폴더만 복사 (캐시 등 대용량 제외)
+				foreach (var f in new[] { "Cookies", "Preferences", "Secure Preferences", "Bookmarks" })
+				{
+					var src = Path.Combine(srcProfile, f);
+					if (File.Exists(src))
+						try { File.Copy(src, Path.Combine(tempProfile, f)); } catch { }
+				}
+				foreach (var d in new[] { "Network", "Local Storage", "Session Storage" })
+				{
+					var src = Path.Combine(srcProfile, d);
+					if (Directory.Exists(src))
+						try { CopyDirectory(src, Path.Combine(tempProfile, d)); } catch { }
+				}
+			}
+
+			return tempBase;
+		}
+
+		private void CopyDirectory(string source, string dest)
+		{
+			Directory.CreateDirectory(dest);
+			foreach (var f in Directory.GetFiles(source))
+				try { File.Copy(f, Path.Combine(dest, Path.GetFileName(f))); } catch { }
+			foreach (var d in Directory.GetDirectories(source))
+				CopyDirectory(d, Path.Combine(dest, Path.GetFileName(d)));
+		}
+
+		private static int _portIncrement = 0;
+
+		private string FindChromePath()
+		{
+			var paths = new[]
+			{
+				@"C:\Program Files\Google\Chrome\Application\chrome.exe",
+				@"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+				Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+							 @"Google\Chrome\Application\chrome.exe")
+			};
+			return paths.FirstOrDefault(File.Exists)
+				   ?? throw new FileNotFoundException("Chrome 실행 파일을 찾을 수 없습니다.");
+		}
+
 		public void Init()
 		{
-			// Option
-			var options = new ChromeOptions();
-			var agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-			//string userProfile = @"C:\Users\honggmbo\AppData\Local\Google\Chrome\User Data";
-			//options.AddArgument($"--user-data-dir={userProfile}");
-			//options.AddArgument("--profile-directory=Default");   // 또는 "Profile 1" 등
-			options.AddArgument($"--user-agent={agent}");
-			options.AddArgument("--disable-blink-features=AutomationControlled");
-			options.AddArgument("disable-gpu");
-			options.AddArgument("--start-maximized");
-			options.AddExcludedArgument("enable-automation");
+			// 프로필 임시 복사 (원본 잠금 회피)
+			var tempUserData = SetupTempProfile();
 
-			new DriverManager().SetUpDriver(new ChromeConfig(), VersionResolveStrategy.MatchingBrowser);
-			var service = ChromeDriverService.CreateDefaultService();
+			// 계정마다 다른 디버깅 포트 (동시 실행 지원)
+			int port = 9222 + System.Threading.Interlocked.Increment(ref _portIncrement);
+
+			// Chrome을 일반 프로세스로 직접 실행 → ChromeDriver 실행 시 붙는 자동화 플래그가 없음
+			Process.Start(new ProcessStartInfo
+			{
+				FileName = FindChromePath(),
+				Arguments = $"--remote-debugging-port={port} " +
+							$"--user-data-dir=\"{tempUserData}\" " +
+							$"--profile-directory=\"{data.Acc.Profile}\" " +
+							"--no-first-run --no-default-browser-check --start-maximized about:blank",
+				UseShellExecute = true
+			});
+			Thread.Sleep(3000); // Chrome 완전 시작 대기
+
+			// ChromeDriver가 이미 실행 중인 Chrome에 붙음 (새 Chrome 실행 X)
+			var driverPath = new DriverManager().SetUpDriver(new ChromeConfig(), VersionResolveStrategy.MatchingBrowser);
+			var service = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName(driverPath));
 			service.HideCommandPromptWindow = true;
 
-			// ChromeDriver 자동 다운로드 및 설정
-			driver = new ChromeDriver(service, options);
+			var options = new ChromeOptions();
+			options.DebuggerAddress = $"127.0.0.1:{port}";
+
+			driver = new ChromeDriver(service, options, TimeSpan.FromSeconds(15));
 			selenium = new SeleniumHelper(driver);
+
+			// 자동화 감지 신호 제거 (CAPTCHA 우회)
+			((ChromeDriver)driver).ExecuteCdpCommand("Page.addScriptToEvaluateOnNewDocument",
+				new Dictionary<string, object>
+				{
+					{ "source", @"
+						// webdriver 속성 완전 제거
+						delete Object.getPrototypeOf(navigator).webdriver;
+						Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+						// 플러그인/미디어 디바이스 스푸핑
+						Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+						Object.defineProperty(navigator, 'mimeTypes', { get: () => [1, 2, 3] });
+						Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });
+						Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+						Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+						Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+						Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+
+						// Chrome 런타임 객체 스푸핑
+						window.chrome = {
+							app: { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } },
+							runtime: { OnInstalledReason: {}, OnRestartRequiredReason: {}, PlatformArch: {}, PlatformNaclArch: {}, PlatformOs: {}, RequestUpdateCheckStatus: {} },
+							loadTimes: function() {},
+							csi: function() {}
+						};
+
+						// Permissions API 패치
+						const originalQuery = window.navigator.permissions.query;
+						window.navigator.permissions.query = (parameters) =>
+							parameters.name === 'notifications'
+								? Promise.resolve({ state: Notification.permission })
+								: originalQuery(parameters);
+
+						// iframe 내 webdriver 제거
+						const originalAttachShadow = Element.prototype.attachShadow;
+						Element.prototype.attachShadow = function() {
+							return originalAttachShadow.apply(this, arguments);
+						};
+					" }
+				});
 
 			Login();
 			Thread.Sleep(1000);
@@ -90,28 +199,97 @@ namespace Tennis
 			ProcessReservation();
 		}
 
+		// JavaScript + React 호환 방식으로 input 값 설정 (SendKeys/Clipboard 방식보다 안정적)
+		private void SetReactInputValue(IWebElement element, string value)
+		{
+			IJavaScriptExecutor js = (IJavaScriptExecutor)driver;
+			js.ExecuteScript(@"
+				var el = arguments[0];
+				var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+				nativeSetter.call(el, arguments[1]);
+				el.dispatchEvent(new Event('focus', { bubbles: true }));
+				el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+				el.dispatchEvent(new Event('input', { bubbles: true }));
+				el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+				el.dispatchEvent(new Event('change', { bubbles: true }));
+			", element, value);
+		}
+
+		// CAPTCHA 또는 추가 인증이 발생했을 때 사용자가 수동 해결할 때까지 대기
+		private void WaitIfCaptcha()
+		{
+			Thread.Sleep(2000);
+			// 로그인 성공 시 nid.naver.com을 벗어남
+			if (driver.Url.Contains("nid.naver.com"))
+			{
+				Console.WriteLine("[CAPTCHA] 자동입력 방지 또는 추가 인증 감지 - 브라우저에서 직접 해결해 주세요 (최대 3분 대기)");
+				var wait = new WebDriverWait(driver, TimeSpan.FromMinutes(3));
+				wait.Until(d => !d.Url.Contains("nid.naver.com"));
+				Console.WriteLine("[CAPTCHA] 해결됨. 계속 진행합니다.");
+			}
+		}
+
 		public void Login()
 		{
-			// 웹사이트 열기
+			var random = new Random();
+			var actions = new Actions(driver);
+
+			// 네이버 메인 방문 - 쿠키/세션 확인
+			driver.Navigate().GoToUrl("https://www.naver.com");
+			Wait();
+			Thread.Sleep(random.Next(1000, 2000));
+
+			// 이미 로그인된 상태면 (user profile 사용 시) 바로 반환
+			if (!driver.Url.Contains("nid.naver.com"))
+			{
+				try
+				{
+					// 로그인된 경우 로그아웃 링크가 존재
+					driver.FindElement(By.XPath("//*[contains(@href,'logout')]"));
+					Console.WriteLine("이미 로그인 상태입니다.");
+					return;
+				}
+				catch { }
+			}
+
+			// 로그인 페이지로 이동
 			driver.Navigate().GoToUrl("https://nid.naver.com/nidlogin.login");
 			Wait();
+			Thread.Sleep(random.Next(1000, 2000));
+
+			// 자연스러운 마우스 이동
+			try { actions.MoveByOffset(random.Next(100, 400), random.Next(100, 300)).Perform(); } catch { }
+			Thread.Sleep(random.Next(300, 700));
+
 			// Id Tab Click
-			selenium.Click("//*[@id=\"loinid\"]/span/span");
+			try
+			{
+				var loginTab = driver.FindElement(By.XPath("//*[@id=\"loinid\"]/span/span"));
+				actions.MoveToElement(loginTab).Click().Perform();
+				Thread.Sleep(random.Next(400, 800));
+			}
+			catch { }
 
-			// login
-			Clipboard.SetText(data.Acc.ID);
+			// 아이디 입력
 			var id = selenium.GetElem("//*[@id=\"id\"]");
-			id.Click();
-			id.SendKeys(Keys.Control + "v" );
-			var pw = selenium.GetElem("//*[@id=\"pw\"]");
-			Thread.Sleep(1000);
-			Clipboard.SetText(data.Acc.PW);
-			pw.Click();
-			pw.SendKeys(Keys.Control + "v");
-			Thread.Sleep(1000);
+			actions.MoveToElement(id).Click().Perform();
+			Thread.Sleep(random.Next(400, 800));
+			SetReactInputValue(id, data.Acc.ID);
+			Thread.Sleep(random.Next(600, 1200));
 
+			// 비밀번호 입력
+			var pw = selenium.GetElem("//*[@id=\"pw\"]");
+			actions.MoveToElement(pw).Click().Perform();
+			Thread.Sleep(random.Next(400, 800));
+			SetReactInputValue(pw, data.Acc.PW);
+			Thread.Sleep(random.Next(600, 1200));
+
+			// 로그인 버튼 클릭
 			var enter = selenium.GetElem("//*[@id=\"log.login\"]");
-			enter.SendKeys(Keys.Enter);
+			actions.MoveToElement(enter).Click().Perform();
+
+			// CAPTCHA 감지 - 나타나면 수동으로 해결할 때까지 대기 후 계속 진행
+			WaitIfCaptcha();
 		}
 
 		public void FindCourt()
@@ -460,6 +638,35 @@ namespace Tennis
 		public void EndTimer()
 		{
 			timer?.Dispose();
+		}
+
+		// ChromeDriver 바이너리에서 자동화 감지 시그니처($cdc_) 제거
+		private static void PatchChromeDriver(string driverPath)
+		{
+			try
+			{
+				var bytes = File.ReadAllBytes(driverPath);
+				var pattern = System.Text.Encoding.ASCII.GetBytes("$cdc_");
+				bool patched = false;
+
+				for (int i = 0; i <= bytes.Length - pattern.Length; i++)
+				{
+					bool found = true;
+					for (int j = 0; j < pattern.Length; j++)
+					{
+						if (bytes[i + j] != pattern[j]) { found = false; break; }
+					}
+					if (found)
+					{
+						bytes[i] = (byte)'z'; // '$' → 'z' 로 변경 (JS 변수명 깨뜨림)
+						patched = true;
+					}
+				}
+
+				if (patched)
+					File.WriteAllBytes(driverPath, bytes);
+			}
+			catch { }
 		}
 
 	}

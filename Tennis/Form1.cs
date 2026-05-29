@@ -29,7 +29,8 @@ namespace Tennis
 						{
 							ID = v.Key,
 							PW = v.Value["PW"].ToString(),
-							SPW = v.Value["SPW"].ToString()
+							SPW = v.Value["SPW"].ToString(),
+							Profile = v.Value["Profile"]?.ToString() ?? "Default"
 						};
 						account.Add(v.Key, acc);
 					}
