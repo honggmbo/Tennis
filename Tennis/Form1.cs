@@ -86,7 +86,7 @@ namespace Tennis
 
 			cbWeek.SelectedIndex = 6;
 			cbYear.SelectedIndex = 0;
-			cbCourtNumber.SelectedIndex = 2;
+			cbCourtNumber.SelectedIndex = 8;
 			cbMonth.SelectedIndex = DateTime.Now.Month >= 12 ? 0 : DateTime.Now.Month;
 			cbDay.SelectedIndex = 0;
 			cbStartTime.SelectedIndex = 10 - 1;

@@ -271,7 +271,7 @@
 			Controls.Add(cbCourt);
 			Controls.Add(cbId);
 			Name = "Form1";
-			Text = "예약 (v.1.0.2)";
+			Text = "예약 (v.1.0.3)";
 			ResumeLayout(false);
 			PerformLayout();
 		}
