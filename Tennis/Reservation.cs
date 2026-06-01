@@ -291,17 +291,27 @@ namespace Tennis
 
 		public void DoDelay()
 		{
-			// KST Zone은 루프 밖에서 한 번만 조회
 			TimeZoneInfo kstZone = TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time");
+
+			// targetHour를 최초 진입 시 한 번만 계산 - Phase 1/2에서 재계산하면
+			// Refresh 지연 등으로 정각을 살짝 지났을 때 다음 정각으로 넘어가는 버그 발생
+			DateTime now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
+			DateTime targetHour = now.AddHours(1).Date.AddHours(now.AddHours(1).Hour);
 
 			// Phase 1: 정각 1분 전까지 1분마다 새로고침하며 대기
 			while (true)
 			{
-				DateTime now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-				DateTime nextHour = now.AddHours(1).Date.AddHours(now.AddHours(1).Hour);
-				TimeSpan remain = nextHour - now;
+				now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
+				TimeSpan remain = targetHour - now;
 
-				Console.WriteLine($"[대기] 다음 정각까지 {remain.Minutes:D2}분 {remain.Seconds:D2}초 남음 ({now:HH:mm:ss} KST)");
+				if (remain.TotalSeconds <= 0)
+				{
+					// 이미 정각을 지남 - 바로 새로고침하고 리턴
+					Refresh(_curUrl);
+					return;
+				}
+
+				Console.WriteLine($"[대기] 정각까지 {remain.Minutes:D2}분 {remain.Seconds:D2}초 남음 ({now:HH:mm:ss} KST)");
 
 				if (remain.TotalSeconds <= RefreshIntervalSec)
 					break;  // 1분 이내 → Phase 2로
@@ -311,13 +321,14 @@ namespace Tennis
 				Refresh(_curUrl);                // 1분마다 새로고침
 			}
 
-			// Phase 2: 정각 1분 전 ~ 정각까지 정밀 대기 후 Refresh
+			// Phase 2: 정각까지 정밀 대기 후 Refresh
 			{
-				DateTime now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-				DateTime nextHour = now.AddHours(1).Date.AddHours(now.AddHours(1).Hour);
-				TimeSpan remain = nextHour - now;
+				now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
+				TimeSpan remain = targetHour - now;
 
-				Thread.Sleep((int)remain.TotalMilliseconds);
+				if (remain.TotalMilliseconds > 0)
+					Thread.Sleep((int)remain.TotalMilliseconds);
+
 				Refresh(_curUrl);
 			}
 		}
