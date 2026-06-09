@@ -49,6 +49,7 @@
 			label1 = new Label();
 			weekend = new Button();
 			cbWeek = new ComboBox();
+			logBox = new RichTextBox();
 			SuspendLayout();
 			// 
 			// cbId
@@ -237,18 +238,31 @@
 			weekend.Click += weekend_Click;
 			// 
 			// cbWeek
-			// 
+			//
 			cbWeek.FormattingEnabled = true;
 			cbWeek.Location = new Point(241, 174);
 			cbWeek.Name = "cbWeek";
 			cbWeek.Size = new Size(121, 23);
 			cbWeek.TabIndex = 28;
-			// 
+			//
+			// logBox
+			//
+			logBox.BackColor = Color.Black;
+			logBox.ForeColor = Color.Lime;
+			logBox.Location = new Point(12, 257);
+			logBox.Name = "logBox";
+			logBox.ReadOnly = true;
+			logBox.ScrollBars = RichTextBoxScrollBars.Vertical;
+			logBox.Size = new Size(346, 155);
+			logBox.TabIndex = 29;
+			logBox.Text = "";
+			//
 			// Form1
-			// 
+			//
 			AutoScaleDimensions = new SizeF(7F, 15F);
 			AutoScaleMode = AutoScaleMode.Font;
-			ClientSize = new Size(370, 247);
+			ClientSize = new Size(370, 424);
+			Controls.Add(logBox);
 			Controls.Add(cbWeek);
 			Controls.Add(weekend);
 			Controls.Add(label8);
@@ -298,5 +312,6 @@
 		private Label label1;
 		private Button weekend;
 		private ComboBox cbWeek;
+		private RichTextBox logBox;
 	}
 }

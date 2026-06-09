@@ -1,12 +1,13 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Collections.Concurrent;
 
 namespace Tennis
 {
 	public partial class Form1 : Form
 	{
 		private Dictionary<string, Account> account = new();
-		private List<ReservationThread> threads = new List<ReservationThread>();
+		private ConcurrentBag<ReservationThread> threads = new();
 
 		public Form1()
 		{
@@ -120,16 +121,27 @@ namespace Tennis
 
 			trd.SetApartmentState(ApartmentState.STA);
 			ReservationThread tp = new ReservationThread(data);
+			tp.LogAction = AppendLog;
 			trd.Start(tp);
 			threads.Add(tp);
 		}
 
 		private void OnClickStop(object sender, EventArgs e)
 		{
-			foreach (var v in threads)
-				v.OnClose();
+			while (threads.TryTake(out var t))
+				t.OnClose();
+		}
 
-			threads.Clear();
+		private void AppendLog(string msg)
+		{
+			var line = $"[{DateTime.Now:HH:mm:ss}] {msg}";
+			if (logBox.InvokeRequired)
+				logBox.Invoke(() => AppendLog(msg));
+			else
+			{
+				logBox.AppendText(line + Environment.NewLine);
+				logBox.ScrollToCaret();
+			}
 		}
 
 		private static void StartReservation(object obj)
@@ -160,6 +172,7 @@ namespace Tennis
 				data.StartDelay = 5000 * i;
 				trd.SetApartmentState(ApartmentState.STA);
 				ReservationThread tp = new ReservationThread(data);
+				tp.LogAction = AppendLog;
 				trd.Start(tp);
 				threads.Add(tp);
 				i++;

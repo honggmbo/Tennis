@@ -32,13 +32,16 @@ namespace Tennis
 		public int StartDelay = 0;
 	}
 
-	public class ReservationThread
+	public class ReservationThread : IDisposable
 	{
 		public ReservationData data;
 		private IWebDriver driver;
 		private SeleniumHelper selenium;
 		private System.Threading.Timer timer;
 		private string _curUrl;
+		private bool _disposed = false;
+
+		public Action<string>? LogAction;
 
 		// 멀티스레드 동시 실행 시 ChromeDriver 셋업 충돌 방지
 		private static readonly object _driverSetupLock = new object();
@@ -46,6 +49,19 @@ namespace Tennis
 		public ReservationThread(ReservationData _data)
 		{
 			data = _data;
+		}
+
+		private void Log(string msg)
+		{
+			LogAction?.Invoke(msg);
+		}
+
+		public void Dispose()
+		{
+			if (_disposed) return;
+			_disposed = true;
+			try { driver?.Quit(); } catch { }
+			try { driver?.Dispose(); } catch { }
 		}
 
 		public void DoStart()
@@ -57,7 +73,11 @@ namespace Tennis
 			}
 			catch (Exception e)
 			{
-				return;
+				Log($"오류 발생: {e.Message}");
+			}
+			finally
+			{
+				Dispose();
 			}
 		}
 
@@ -98,6 +118,7 @@ namespace Tennis
 			// ChromeDriver 자동 다운로드 및 설정
 			driver = new ChromeDriver(service, options);
 			selenium = new SeleniumHelper(driver);
+			selenium.LogAction = LogAction;
 
 			Login();
 			Thread.Sleep(1000);
@@ -115,11 +136,11 @@ namespace Tennis
 			// 로그인 성공 시 nid.naver.com을 벗어남
 			if (driver.Url.Contains(url))
 			{
-				Console.WriteLine("[CAPTCHA] 자동입력 방지 또는 추가 인증 감지 - 브라우저에서 직접 해결해 주세요 (최대 3분 대기)");
+				Log("[CAPTCHA] 자동입력 방지 또는 추가 인증 감지 - 브라우저에서 직접 해결해 주세요 (최대 3분 대기)");
 				var wait = new WebDriverWait(driver, TimeSpan.FromMinutes(10));
 				string uuu = driver.Url;
 				wait.Until(d => d.Url.Contains(nextUrl));
-				Console.WriteLine("[CAPTCHA] 해결됨. 계속 진행합니다.");
+				Log("[CAPTCHA] 해결됨. 계속 진행합니다.");
 			}
 		}
 
@@ -131,7 +152,7 @@ namespace Tennis
 			WaitIfCaptcha("nid.naver.com", "nid.naver.com");
 
 			// Id Tab Click
-			selenium.Click("//*[@id=\"log.otnlogtab\"]/span/span");
+			selenium.Click("//*[@id=\"log.qrlogtab\"]/span/span");
 
 			// CAPTCHA 감지 - 나타나면 수동으로 해결할 때까지 대기 후 계속 진행
 			WaitIfCaptcha("nid.naver.com", "https://www.naver.com/");
@@ -213,7 +234,7 @@ namespace Tennis
 
 		public void OnClose()
 		{
-			driver.Quit();
+			Dispose();
 		}
 
 		public void WindowScrollBottom()
@@ -233,7 +254,7 @@ namespace Tennis
 				{
 					if (btn.Text == "다음")
 					{
-						Console.WriteLine("OK");
+						Log("OK");
 						if (btn.Displayed && btn.Enabled)
 							btn.Click();
 						return true;
@@ -296,7 +317,8 @@ namespace Tennis
 			// targetHour를 최초 진입 시 한 번만 계산 - Phase 1/2에서 재계산하면
 			// Refresh 지연 등으로 정각을 살짝 지났을 때 다음 정각으로 넘어가는 버그 발생
 			DateTime now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-			DateTime targetHour = now.AddHours(1).Date.AddHours(now.AddHours(1).Hour);
+			DateTime next = now.AddHours(1);
+			DateTime targetHour = new DateTime(next.Year, next.Month, next.Day, next.Hour, 0, 0);
 
 			// Phase 1: 정각 1분 전까지 1분마다 새로고침하며 대기
 			while (true)
@@ -311,7 +333,7 @@ namespace Tennis
 					return;
 				}
 
-				Console.WriteLine($"[대기] 정각까지 {remain.Minutes:D2}분 {remain.Seconds:D2}초 남음 ({now:HH:mm:ss} KST)");
+				Log($"[대기] 정각까지 {remain.Minutes:D2}분 {remain.Seconds:D2}초 남음 ({now:HH:mm:ss} KST)");
 
 				if (remain.TotalSeconds <= RefreshIntervalSec)
 					break;  // 1분 이내 → Phase 2로
@@ -431,7 +453,7 @@ namespace Tennis
 			};
 
 			wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").ToString() == "complete");
-			Console.WriteLine("페이지 로딩 완료!");
+			Log("페이지 로딩 완료!");
 		}
 
 		public bool ProcessSPW(string base64Image)
@@ -499,11 +521,11 @@ namespace Tennis
 				try
 				{
 					driver.Navigate().Refresh();
-					Console.WriteLine($"새로고침 완료 - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+					Log($"새로고침 완료 - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 				}
 				catch (Exception ex)
 				{
-					Console.WriteLine($"새로고침 실패: {ex.Message}");
+					Log($"새로고침 실패: {ex.Message}");
 				}
 			}, null, 0, seconds * 1000);
 		}
