@@ -42,6 +42,7 @@ namespace Tennis
 		private bool _disposed = false;
 
 		public Action<string>? LogAction;
+		public int ThreadNo;
 
 		// 멀티스레드 동시 실행 시 ChromeDriver 셋업 충돌 방지
 		private static readonly object _driverSetupLock = new object();
@@ -53,7 +54,7 @@ namespace Tennis
 
 		private void Log(string msg)
 		{
-			LogAction?.Invoke(msg);
+			LogAction?.Invoke($"[{ThreadNo}] {msg}");
 		}
 
 		public void Dispose()
@@ -73,7 +74,7 @@ namespace Tennis
 			}
 			catch (Exception e)
 			{
-				Log($"오류 발생: {e.Message}");
+				try { Log($"오류 발생: {e.Message}"); } catch { }
 			}
 			finally
 			{

@@ -8,6 +8,7 @@ namespace Tennis
 	{
 		private Dictionary<string, Account> account = new();
 		private ConcurrentBag<ReservationThread> threads = new();
+		private int _threadCount = 0;
 
 		public Form1()
 		{
@@ -122,6 +123,7 @@ namespace Tennis
 			trd.SetApartmentState(ApartmentState.STA);
 			ReservationThread tp = new ReservationThread(data);
 			tp.LogAction = AppendLog;
+			tp.ThreadNo = ++_threadCount;
 			trd.Start(tp);
 			threads.Add(tp);
 		}
@@ -134,20 +136,30 @@ namespace Tennis
 
 		private void AppendLog(string msg)
 		{
-			var line = $"[{DateTime.Now:HH:mm:ss}] {msg}";
-			if (logBox.InvokeRequired)
-				logBox.Invoke(() => AppendLog(msg));
-			else
+			if (IsDisposed) return;
+			try
 			{
-				logBox.AppendText(line + Environment.NewLine);
-				logBox.ScrollToCaret();
+				var line = $"[{DateTime.Now:HH:mm:ss}] {msg}";
+				if (logBox.InvokeRequired)
+					logBox.Invoke(() => AppendLog(msg));
+				else
+				{
+					logBox.AppendText(line + Environment.NewLine);
+					logBox.ScrollToCaret();
+				}
 			}
+			catch (ObjectDisposedException) { }
+			catch (InvalidOperationException) { }
 		}
 
 		private static void StartReservation(object obj)
 		{
-			var v = obj as ReservationThread;
-			v.DoStart();
+			if (obj is not ReservationThread v) return;
+			try
+			{
+				v.DoStart();
+			}
+			catch { }
 		}
 
 		protected override void OnFormClosing(FormClosingEventArgs e)
@@ -173,6 +185,7 @@ namespace Tennis
 				trd.SetApartmentState(ApartmentState.STA);
 				ReservationThread tp = new ReservationThread(data);
 				tp.LogAction = AppendLog;
+				tp.ThreadNo = ++_threadCount;
 				trd.Start(tp);
 				threads.Add(tp);
 				i++;
