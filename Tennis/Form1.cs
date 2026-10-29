@@ -14,6 +14,18 @@ namespace Tennis
 		{
 			InitializeComponent();
 			InitData();
+
+			// 비정상 종료(크래시, 강제 종료 등) 대비 안전장치
+			AppDomain.CurrentDomain.ProcessExit += (_, _) => CleanupAll();
+			Application.ApplicationExit += (_, _) => CleanupAll();
+		}
+
+		private void CleanupAll()
+		{
+			while (threads.TryTake(out var t))
+			{
+				try { t.OnClose(); } catch { }
+			}
 		}
 
 		private void InitData()
@@ -32,7 +44,6 @@ namespace Tennis
 							ID = v.Key,
 							PW = v.Value["PW"].ToString(),
 							SPW = v.Value["SPW"].ToString(),
-							Profile = v.Value["Profile"]?.ToString() ?? "Default"
 						};
 						account.Add(v.Key, acc);
 					}
@@ -130,8 +141,7 @@ namespace Tennis
 
 		private void OnClickStop(object sender, EventArgs e)
 		{
-			while (threads.TryTake(out var t))
-				t.OnClose();
+			CleanupAll();
 		}
 
 		private void AppendLog(string msg)
@@ -164,7 +174,8 @@ namespace Tennis
 
 		protected override void OnFormClosing(FormClosingEventArgs e)
 		{
-			OnClickStop(null, null);
+			CleanupAll();
+			base.OnFormClosing(e);
 		}
 
 		private void weekend_Click(object sender, EventArgs e)
