@@ -23,7 +23,7 @@ namespace Tennis
 
 	public class ReservationData
 	{
-		public Account Acc;
+		public Account Acc = null!;
 		public string Court = "";
 		public string CourtNumber = "";
 		public int Year;
@@ -43,12 +43,12 @@ namespace Tennis
 			"https://nid.naver.com/nidlogin.login?mode=form&url=https://www.naver.com/";
 
 		public ReservationData data;
-		private IWebDriver driver;
-		private SeleniumHelper selenium;
+		private IWebDriver driver = null!;        // Init() 에서 설정
+		private SeleniumHelper selenium = null!;  // Init() 에서 설정
 		private ChromeDriverService? driverService;
 		private Process? chromeProcess;
-		private System.Threading.Timer timer;
-		private string _curUrl;
+		private System.Threading.Timer timer = null!;  // 미사용 상태지만 레거시 필드 유지
+		private string _curUrl = "";
 		private bool _disposed = false;
 
 		public Action<string>? LogAction;
@@ -602,7 +602,7 @@ fetch('/graphql?opName=bizItems', {
 			string bizItemId;
 			try
 			{
-				bizItemId = (string)((IJavaScriptExecutor)driver).ExecuteAsyncScript(script, payload, findName, excludeNov);
+				bizItemId = ((IJavaScriptExecutor)driver).ExecuteAsyncScript(script, payload, findName, excludeNov) as string ?? "";
 			}
 			catch (Exception ex)
 			{
@@ -1098,49 +1098,154 @@ return 'CLICKED';
 		// 예약 오픈 시각까지 대기. 정각 N초 전부터는 새로고침 없이 정밀 대기 후 리턴.
 		private const int RefreshIntervalSec = 60;   // 오픈까지 여유 있을 때 새로고침 주기
 
+		// 네트워크 왕복 보정용 선발사 오프셋(ms). 양수면 서버 정각보다 그만큼 앞서 Refresh 를 쏨.
+		// 보수적으로 0 유지. 로그로 실제 발사 시각 확인 후 필요시 50~150 사이 값으로 조정.
+		private const int FireLeadMs = 0;
+
+		// (서버 UTC) - (로컬 UTC) 오프셋. 양수면 서버가 로컬보다 빠름.
+		// SyncServerTime 으로 측정 — 로컬 Windows 시계가 수 초 틀어져 있어도 서버 정각에 발사하기 위함.
+		private long _serverTimeOffsetMs = 0;
+
+		/// <summary>
+		/// HTTP Date 응답 헤더에서 서버 시간을 가져와 로컬 시계와의 오프셋을 저장한다.
+		/// 로컬 시계가 조금만 어긋나도 '먼저 들어온 요청이 slot 을 잡는' 레이스에서 뒤처지므로 필수.
+		/// Date 헤더는 초 단위라 ±500ms 오차는 있지만, 수 초 단위의 시스템 드리프트 제거만으로도 충분.
+		/// </summary>
+		private static readonly System.Net.Http.HttpClient _timeSyncClient = new System.Net.Http.HttpClient
+		{
+			Timeout = TimeSpan.FromSeconds(3)
+		};
+
+		private void SyncServerTime(string probeUrl)
+		{
+			try
+			{
+				if (string.IsNullOrEmpty(probeUrl))
+				{
+					_serverTimeOffsetMs = 0;
+					return;
+				}
+
+				using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, probeUrl);
+				req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0");
+
+				var tBefore = DateTime.UtcNow;
+				using var res = _timeSyncClient.Send(req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+				var tAfter = DateTime.UtcNow;
+
+				var dateHdr = res.Headers.Date;
+				if (!dateHdr.HasValue)
+				{
+					Log("[시간동기] Date 헤더 없음 - 로컬 시간 사용");
+					_serverTimeOffsetMs = 0;
+					return;
+				}
+
+				var serverUtc = dateHdr.Value.UtcDateTime;
+				// 요청 왕복 중간 지점을 로컬 측정 기준으로 삼음 (RTT/2 보정)
+				var rtt = tAfter - tBefore;
+				var tMid = tBefore + TimeSpan.FromTicks(rtt.Ticks / 2);
+				_serverTimeOffsetMs = (long)(serverUtc - tMid).TotalMilliseconds;
+
+				Log($"[시간동기] 서버-로컬 오프셋 {_serverTimeOffsetMs:+#;-#;0}ms (RTT {rtt.TotalMilliseconds:F0}ms)");
+			}
+			catch (Exception ex)
+			{
+				Log($"[시간동기] 실패 - 로컬 시간 사용: {ex.Message}");
+				_serverTimeOffsetMs = 0;
+			}
+		}
+
+		private DateTime ServerNowKst(TimeZoneInfo kstZone)
+		{
+			var utc = DateTime.UtcNow.AddMilliseconds(_serverTimeOffsetMs);
+			return TimeZoneInfo.ConvertTimeFromUtc(utc, kstZone);
+		}
+
 		public void DoDelay()
 		{
 			TimeZoneInfo kstZone = TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time");
 
+			// 로컬 시계 드리프트 보정 — Phase 1 진입 전에 1회
+			SyncServerTime(_curUrl);
+
 			// targetHour를 최초 진입 시 한 번만 계산 - Phase 1/2에서 재계산하면
 			// Refresh 지연 등으로 정각을 살짝 지났을 때 다음 정각으로 넘어가는 버그 발생
-			DateTime now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
+			DateTime now = ServerNowKst(kstZone);
 			DateTime next = now.AddHours(1);
 			DateTime targetHour = new DateTime(next.Year, next.Month, next.Day, next.Hour, 0, 0);
+			DateTime fireAt = targetHour.AddMilliseconds(-FireLeadMs);
 
-			// Phase 1: 정각 1분 전까지 1분마다 새로고침하며 대기
+			Log($"[대기] 타겟 {targetHour:HH:mm:ss} KST / 현재 {now:HH:mm:ss.fff} / 리드 {FireLeadMs}ms");
+
+			// Phase 1: 세션 유지용 60초 고정 간격 Refresh.
+			// 간격을 짧게(가속) 하면 네이버가 봇으로 판정 → 다른 페이지로 리다이렉트시키고
+			// 예약 페이지로 돌아올 수 없게 막는다. 따라서 오픈이 가까워져도 가속하지 않는다.
 			while (true)
 			{
-				now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-				TimeSpan remain = targetHour - now;
+				now = ServerNowKst(kstZone);
+				TimeSpan remain = fireAt - now;
 
-				if (remain.TotalSeconds <= 0)
+				if (remain.TotalMilliseconds <= 0)
 				{
-					// 이미 정각을 지남 - 바로 새로고침하고 리턴
+					Log($"[대기] 이미 타겟 지남 - 즉시 Refresh ({now:HH:mm:ss.fff})");
 					Refresh(_curUrl);
 					return;
 				}
 
-				Log($"[대기] 정각까지 {remain.Minutes:D2}분 {remain.Seconds:D2}초 남음 ({now:HH:mm:ss} KST)");
+				if (remain.TotalSeconds <= 30) break;  // 30초 이하 → Phase 2
 
-				if (remain.TotalSeconds <= RefreshIntervalSec)
-					break;  // 1분 이내 → Phase 2로
+				Log($"[대기] 정각까지 {remain.Minutes:D2}:{remain.Seconds:D2} 남음 (세션 유지 Refresh, 다음 60s 후)");
 
 				WindowScrollBottom();
-				Thread.Sleep(RefreshIntervalSec * 1000);  // 1분 대기
-				Refresh(_curUrl);                // 1분마다 새로고침
-			}
 
-			// Phase 2: 정각까지 정밀 대기 후 Refresh
-			{
-				now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, kstZone);
-				TimeSpan remain = targetHour - now;
-
-				if (remain.TotalMilliseconds > 0)
-					Thread.Sleep((int)remain.TotalMilliseconds);
-
+				// 다음 Refresh 가 Phase 2 영역(30초 이내)으로 넘어가지 않도록 상한
+				int maxSleepMs = (int)Math.Max(0, remain.TotalMilliseconds - 30_000);
+				int sleepMs = Math.Min(60_000, maxSleepMs);
+				if (sleepMs > 0) Thread.Sleep(sleepMs);
 				Refresh(_curUrl);
 			}
+
+			// Phase 2: 정밀 대기 — 초 단위 카운트다운 → Thread.Sleep → 마지막 50ms 는 busy-spin.
+			// Windows Thread.Sleep 은 ~15ms 지터가 있어 마지막 구간만 스핀으로 ms 미만 정밀도 확보.
+			int lastLoggedSec = -1;
+			while (true)
+			{
+				now = ServerNowKst(kstZone);
+				double remainMs = (fireAt - now).TotalMilliseconds;
+
+				if (remainMs <= 0) break;
+
+				int secLeft = (int)Math.Ceiling(remainMs / 1000.0);
+				if (secLeft != lastLoggedSec)
+				{
+					Log($"[카운트다운] {secLeft}초 ({now:HH:mm:ss.fff})");
+					lastLoggedSec = secLeft;
+				}
+
+				if (remainMs > 1500)
+				{
+					// 다음 '초' 경계까지만 자고 다시 로그
+					int sleepMs = (int)(remainMs % 1000);
+					if (sleepMs < 50) sleepMs += 1000;
+					Thread.Sleep(sleepMs);
+				}
+				else if (remainMs > 50)
+				{
+					Thread.Sleep((int)remainMs - 50);
+				}
+				else
+				{
+					// 마지막 50ms busy-spin
+					var sw = Stopwatch.StartNew();
+					long waitTicks = (long)(remainMs * Stopwatch.Frequency / 1000.0);
+					while (sw.ElapsedTicks < waitTicks) { /* spin */ }
+					break;
+				}
+			}
+
+			Log($"[발사] {ServerNowKst(kstZone):HH:mm:ss.fff} KST");
+			Refresh(_curUrl);
 		}
 
 		public void ProcessReservation()
@@ -1362,7 +1467,7 @@ return 'CLICKED';
 				Message = "타임아웃: 결제 관련 요소 로드 실패"
 			};
 
-			wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").ToString() == "complete");
+			wait.Until(d => (((IJavaScriptExecutor)d).ExecuteScript("return document.readyState") as string ?? "") == "complete");
 			Log("페이지 로딩 완료!");
 		}
 
@@ -1373,10 +1478,13 @@ return 'CLICKED';
 
 			string base64Data = match.Groups[2].Value;
 			byte[] imageBytes = Convert.FromBase64String(base64Data);
-			string credentialsString = File.ReadAllText("./norse-wavelet-479101-t1-e59455775bb5.json");
+			// GoogleCredential.FromXxx 는 모두 obsolete — CredentialFactory 로 명시적 타입 생성 후 변환이 권장.
+			const string credentialsPath = "./norse-wavelet-479101-t1-e59455775bb5.json";
+			var serviceAccount = Google.Apis.Auth.OAuth2.CredentialFactory
+				.FromFile<Google.Apis.Auth.OAuth2.ServiceAccountCredential>(credentialsPath);
 			ImageAnnotatorClient client = new ImageAnnotatorClientBuilder
 			{
-				JsonCredentials = credentialsString
+				GoogleCredential = serviceAccount.ToGoogleCredential()
 				//CredentialsPath = "./your_jsoncredentials.json"
 				// 간단히 CredentialsPath에 서비스 계정 키(json) 파일을 직접 대입해도 된다.
 			}.Build();

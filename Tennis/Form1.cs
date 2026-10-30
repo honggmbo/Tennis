@@ -42,8 +42,8 @@ namespace Tennis
 						var acc = new Account()
 						{
 							ID = v.Key,
-							PW = v.Value["PW"].ToString(),
-							SPW = v.Value["SPW"].ToString(),
+							PW = v.Value?["PW"]?.ToString() ?? "",
+							SPW = v.Value?["SPW"]?.ToString() ?? "",
 						};
 						account.Add(v.Key, acc);
 					}
@@ -110,16 +110,17 @@ namespace Tennis
 
 		private ReservationData GetData()
 		{
+			// ComboBox 는 모두 InitData 에서 SelectedIndex 를 지정하므로 SelectedItem/ToString 이 null 일 수 없음.
 			var data = new ReservationData();
-			string acc = cbId.SelectedItem.ToString();
+			string acc = cbId.SelectedItem!.ToString()!;
 			data.Acc = account[acc];
-			data.Court = cbCourt.SelectedItem.ToString();
-			data.CourtNumber = cbCourtNumber.SelectedItem.ToString();
-			data.Year = int.Parse(cbYear.SelectedItem.ToString());
-			data.Month = int.Parse(cbMonth.SelectedItem.ToString());
-			data.Day = int.Parse(cbDay.SelectedItem.ToString());
-			data.StartTime = int.Parse(cbStartTime.SelectedItem.ToString());
-			data.EndTime = int.Parse(cbEndTime.SelectedItem.ToString());
+			data.Court = cbCourt.SelectedItem!.ToString()!;
+			data.CourtNumber = cbCourtNumber.SelectedItem!.ToString()!;
+			data.Year = int.Parse(cbYear.SelectedItem!.ToString()!);
+			data.Month = int.Parse(cbMonth.SelectedItem!.ToString()!);
+			data.Day = int.Parse(cbDay.SelectedItem!.ToString()!);
+			data.StartTime = int.Parse(cbStartTime.SelectedItem!.ToString()!);
+			data.EndTime = int.Parse(cbEndTime.SelectedItem!.ToString()!);
 			data.IsDelay = reservationDelay.Checked;
 
 			return data;
@@ -162,7 +163,7 @@ namespace Tennis
 			catch (InvalidOperationException) { }
 		}
 
-		private static void StartReservation(object obj)
+		private static void StartReservation(object? obj)
 		{
 			if (obj is not ReservationThread v) return;
 			try
@@ -180,8 +181,8 @@ namespace Tennis
 
 		private void weekend_Click(object sender, EventArgs e)
 		{
-			int year = int.Parse(cbYear.SelectedItem.ToString());
-			int month = int.Parse(cbMonth.SelectedItem.ToString());
+			int year = int.Parse(cbYear.SelectedItem!.ToString()!);
+			int month = int.Parse(cbMonth.SelectedItem!.ToString()!);
 			DayOfWeek week = (DayOfWeek)cbWeek.SelectedIndex;
 			FindDayOfWeekList(year, month, week, out var list);
 
